@@ -1,5 +1,5 @@
 # CS2-BotAI
-Improves the built in bots AI.<br>
+Improves the build in bots AI.<br>
 <br>
 Keeps them from running with a knife or nade.<br>
 Keeps them from switching to their knives when in flames.<br>
@@ -9,9 +9,9 @@ Keeps them from stopping after the bomb is planted.<br>
 Allows them to flick with sniper rifles and spray at all ranges.<br>
 Improves their movement comprehensively, especially in dodging and peeking.<br>
 Enhances bots' awareness of their surroundings.<br>
-Allows defusing to be interrupted.<br>
+Improved bomb-related logic.<br>
 <br>
-V 1.6.7<br>
+V 1.7.0<br>
 Built and testing with<br>
 cs# 1.0.367<br>
 # Installation
