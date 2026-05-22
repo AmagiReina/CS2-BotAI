@@ -23,7 +23,7 @@ public static class BotOffsets
 public class BotAI : BasePlugin
 {
     public override string ModuleName        => "Patches - Bot AI";
-    public override string ModuleVersion     => "1.7.2";
+    public override string ModuleVersion     => "1.7.3";
     public override string ModuleAuthor      => "K4ryuu & Austin (updated by ed0ard)";
     public override string ModuleDescription =>
         "Improve and fix bots' behavior comprehensively";
@@ -269,6 +269,37 @@ public class BotAI : BasePlugin
             patch:            "EB 0D",
             expectedOriginal: "75 0D",
             patchOffset:      2    //RVA 0x31931c: jne → jmp
+        ),
+
+        // IsNoticable（raw 0x2DA930）
+        ["IsNoticable_AlwaysTrue"] = (
+            signature:        "40 53 48 83 EC 30 48 8B D9 BA FF FF FF FF 48 8D 0D ? ? ? ? E8 ? ? ? ? 48 85 C0 75",
+            patch:            "B0 01 C3",
+            expectedOriginal: "40 53 48",
+            patchOffset:      0
+        ),
+
+        // InViewCone(bot, target):
+        //      angle = GetFOVToPosition(target) 
+        //      if angle > 60.0f:
+        //          return 0 
+        //      eax = 0
+        //      angle2 = GetFOVToPosition(target)
+        //      eax = (angle2 <= 25.0f) ? 1 : 0
+        //      eax += 1
+        //      return eax   
+        ["InViewCone_RemoveOuterFOV"] = (
+            signature:        "FF 90 C8 00 00 00 0F 2F 05 ? ? ? ? 76 08 33 C0",
+            patch:            "90 90",
+            expectedOriginal: "76 08",
+            patchOffset:      13
+        ),
+
+        ["InViewCone_RemoveInnerFOV"] = (
+            signature:        "0F 96 C0 FF C0 48 83 C4 20 5B C3",
+            patch:            "B0 01 90",
+            expectedOriginal: "0F 96 C0",
+            patchOffset:      0
         ),
 
 
