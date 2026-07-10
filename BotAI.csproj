@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <Reference Include="Common">
-      <HintPath>C:\Games\BETTERBOTS\FINAL\CS2-BotAI\Common.dll</HintPath>
+      <HintPath>libs/Common.dll</HintPath>
     </Reference>
   </ItemGroup>
 
