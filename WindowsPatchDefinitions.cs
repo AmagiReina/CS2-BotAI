@@ -114,10 +114,10 @@ internal static class WindowsPatchDefinitions
         ),
 
         ["AttackState_SkipSniperSpreadCheck"] = (
-            signature:        "41 0F 28 C8 0F 57 C0 FF 15 ? ? ? ? F3 0F 10 0D ? ? ? ? 0F 2F C8 0F 86",
+            signature:        "41 0F 28 C8 0F 57 C0 FF 15 ? ? ? ? F3 0F 10 0D ? ? ? ? 0F 2F C8 0F 86 ? ? ? ? 48 8B 9E ? ? 00 00",
             patch:            "90 90 90 90 90 90",
-            expectedOriginal: "0F 86 8A 04 00 00",
-            patchOffset:      24  // RVA 0x320153: NOP jbe+47B
+            expectedOriginal: "0F 86 ? ? ? ?",
+            patchOffset:       24  // RVA 0x320153: NOP jbe+47B
         ),
 
 
@@ -145,20 +145,23 @@ internal static class WindowsPatchDefinitions
         // Source: AttackState::OnEnter
         // skill>0.5 && (Outnumbered || CanSeeSniper) → dodgeChance=100
         ["AttackState_DodgeChance100_Always"] = (
-            signature:        "0F 28 F0 F3 0F 59 35 ? ? ? ? 76 15",
-            patch:            "EB 11",
-            expectedOriginal: "76 15",
-            patchOffset:      11
+            signature:          "0F 28 F0 F3 0F 59 35 ? ? ? ? 76 14",
+            patch:              "EB 11",
+            expectedOriginal:   "76 14",
+            patchOffset:        11
         ),
 
         // Source: AttackState::OnUpdate
         // (CanSeeSniper && !IsSniper) → retreat
         ["AttackState_RetreatOnSniper_Disable"] = (
-            signature:        "44 38 B6 ? 5C 00 00 74 0C 48 8B CE E8 ? ? ? ? 84 C0",
-            patch:            "EB 0C",
-            expectedOriginal: "74 0C",
-            patchOffset:      7
-        ),
+            signature:         "38 9E ? ? 00 00 74 ? 48 8B CE E8 ? ? ? ? 84 C0 74 ?",
+                patch:
+                    "EB",
+                expectedOriginal:
+                    "74",
+                patchOffset:
+                    6
+            ),
 
         ["AllSkill_KeepMoving_WhenSeeSniper"] = (
             signature:        "0F 2F 05 ? ? ? ? 76 0D 80 BF ? ? 00 00 00 0F 85",
@@ -256,55 +259,68 @@ internal static class WindowsPatchDefinitions
             patchOffset:      7     // VA 0x180335696: je → NOP NOP
         ),
 
-        // Source: IdleState::OnUpdate, T-side "bomb planted but site unknown" path
-        //   bombSite = GetGameState()->GetNextBombsiteToSearch();
-        //   → replaced with:
-        //   bombSite = GetGameState()->GetPlantedBombsite();
-        // With the patch active: [gameState+0x68] is set at plant time for all bots.
-        //  directly to the planted site instead of random searching.
-        ["TBot_BombsiteSearch_UseKnownPlantedSite"] = (
-            signature:        "48 8B 8E ? ? 00 00 E8 ? ? ? ? 49 8B CC E8 ? ? ? ? 4C 8B 05 ? ? ? ? 85 C0",
-            patch:            "E8 55 46 F9 FF",
-            expectedOriginal: "E8 D5 3F F9 FF",
-            patchOffset:      15
+            // Source: IdleState::OnUpdate, T-side "bomb planted but site unknown" path
+            //   bombSite = GetGameState()->GetNextBombsiteToSearch();
+            //   → replaced with:
+            //   bombSite = GetGameState()->GetPlantedBombsite();
+            // With the patch active: [gameState+0x68] is set at plant time for all bots.
+            //  directly to the planted site instead of random searching.
+            ["TBot_BombsiteSearch_UseKnownPlantedSite"] = (
+                signature:
+                    "48 8B 8E ? ? 00 00 E8 ? ? ? ? 48 8B CB E8 ? ? ? ? 4C 8B 05 ? ? ? ? 85 C0",
+                patch:
+                    "E8 28 41 F9 FF",
+                expectedOriginal:
+                    "E8 38 3B F9 FF",
+                patchOffset:
+                    15
         ),
 
-        // Source: cs_bot_event_bomb / OnBombBeep handler
-        //   const float bombBeepHearRangeSq = 1500.0f * 1500.0f;
-        //   if (rangeSq > bombBeepHearRangeSq) return;
-        // NOP the jbe → CT bots always enter the bombsite-update path,
-        // regardless of distance to the bomb.
-        ["BombBeep_CT_GlobalHearRange"] = (
-            signature:        "F3 0F 59 F6 F3 0F 59 DB F3 0F 59 D2 F3 0F 58 DA F3 0F 58 DE 0F 2F C3 76 67",
-            patch:            "90 90",
-            expectedOriginal: "76 67",
-            patchOffset:      23
+            // Source: cs_bot_event_bomb / OnBombBeep handler
+            //   const float bombBeepHearRangeSq = 1500.0f * 1500.0f;
+            //   if (rangeSq > bombBeepHearRangeSq) return;
+            // NOP the jbe → CT bots always enter the bombsite-update path,
+            // regardless of distance to the bomb.
+            ["BombBeep_CT_GlobalHearRange"] = (
+                signature:
+                    "F3 0F 59 C9 F3 0F 59 C0 F3 0F 59 F6 F3 0F 58 C8 F3 0F 10 05 ? ? ? ? F3 0F 58 CE 0F 2F C1 76 67",
+                patch:
+                    "90 90",
+                expectedOriginal:
+                    "76 67",
+                patchOffset:
+                    31
         ),
 
-        // Source: cs_bot_event_bomb.cpp — OnBombPickedUp
-        //   const float bombPickupHearRangeSq = 1000.0f * 1000.0f;
-        //   if (LengthSqr() < bombPickupHearRangeSq) → CT tracks bomber
-        // NOP jbe → all CT bots always track who picks up the bomb.
-        ["BombPickup_CT_GlobalHearRange"] = (
-            signature:        "F3 0F 5C 78 08 F3 0F 59 D2 F3 0F 59 FF F3 0F 58 CA F3 0F 58 CF 0F 28 BC 24 E0 00 00 00 0F 2F C1 76 23",
-            patch:            "90 90",
-            expectedOriginal: "76 23",
-            patchOffset:      32
+            // Source: cs_bot_event_bomb.cpp — OnBombPickedUp
+            //   const float bombPickupHearRangeSq = 1000.0f * 1000.0f;
+            //   if (LengthSqr() < bombPickupHearRangeSq) → CT tracks bomber
+            // NOP jbe → all CT bots always track who picks up the bomb.
+            ["BombPickup_CT_GlobalHearRange"] = (
+                signature:   "F3 0F 59 D2 F3 0F 59 C0 F3 0F 59 C9 F3 0F 58 D1 F3 0F 58 D0 F3 0F 10 05 ? ? ? ? 0F 2F C2 76 23",
+                patch:       "90 90",
+                expectedOriginal:"76 23",
+                patchOffset:
+                    31
         ),
 
-        // Source: CCSBot::OnAudibleEvent — universal sound event gate
-        //   if (newNoiseDist < range) → heard
-        // All sound events (weapon_fire, footsteps, reload, grenade bounce,
-        //   door, flashbang, etc.) funnel through OnAudibleEvent.
-        // NOP the jbe (6 bytes: 0F 86 → 90 90 90 90 90 90) → every bot
-        // hears every sound event regardless of distance. This replaces the
-        // need for individual per-event patches
-        ["OnAudibleEvent_GlobalHearRange"] = (
-            signature:        "F3 44 0F 51 CA EB 0C 0F 28 C2 E8 ? ? ? ? 44 0F 28 C8 45 0F 2F D1 0F 86 ? ? ? ?",
-            patch:            "90 90 90 90 90 90",
-            expectedOriginal: "0F 86 F4 03 00 00",
-            patchOffset:      23
-        ),
+            // Source: CCSBot::OnAudibleEvent — universal sound event gate
+            //   if (newNoiseDist < range) → heard
+            // All sound events (weapon_fire, footsteps, reload, grenade bounce,
+            //   door, flashbang, etc.) funnel through OnAudibleEvent.
+            // NOP the jbe (6 bytes: 0F 86 → 90 90 90 90 90 90) → every bot
+            // hears every sound event regardless of distance. This replaces the
+            // need for individual per-event patches
+            ["OnAudibleEvent_GlobalHearRange"] = (
+                signature:
+                    "F3 44 0F 51 CA EB 0C 0F 28 C2 E8 ? ? ? ? 44 0F 28 C8 45 0F 2F D1 0F 86 ? ? ? ?",
+                patch:
+                    "90 90 90 90 90 90",
+                expectedOriginal:
+                    "0F 86 ? ? ? ?",
+                patchOffset:
+                    23
+            ),
 
         // Source: CSGameState::OnBombPlanted (cs_gamestate)
         //   // Terrorists always know where the bomb is
