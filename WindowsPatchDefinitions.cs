@@ -190,32 +190,48 @@ internal static class WindowsPatchDefinitions
         ),
 
             ["Vision_ApproachBody_SkipSkillCheck"] = (
-            signature: "0F 2F C7 76 3B 80 BF ? ? 00 00 00 74 32",
-            patch: "90 90",
-            expectedOriginal: "76 3B",
-            patchOffset: 3
-        ),
+                signature:
+                    "F3 0F 10 40 0C 0F 2F C6 76 ?",
+                patch:
+                    "90 90",
+                expectedOriginal:
+                    "76 ?",
+                patchOffset:
+                    8
+            ),
 
             ["Vision_ApproachBody_SkipHidingSpotCheck"] = (
-            signature: "0F 2F C7 76 3B 80 BF ? ? 00 00 00 74 32",
-            patch: "90 90",
-            expectedOriginal: "74 32",
-            patchOffset: 12
-        ),
+                signature:
+                    "80 BF ? ? 00 00 00 74 ? 80 7D 43 00 74 ? BA 64 00 00 00 33 C9",
+                patch:
+                    "90 90",
+                expectedOriginal:
+                    "74 ?",
+                patchOffset:
+                    7
+            ),
 
             ["Vision_SkipIsMovingGate"] = (
-            signature: "0F 2F 35 ? ? ? ? 77 0F 49 8B D7 48 8B CF E8",
-            patch: "90 90",
-            expectedOriginal: "77 0F",
-            patchOffset: 7    //RVA 0x319306: ja → NOP
-        ),
+                signature:
+                    "0F 2F 35 ? ? ? ? 77 ? 49 8B ? 48 8B CF E8 ? ? ? ? 84 C0 75 ?",
+                patch:
+                    "90 90",
+                expectedOriginal:
+                    "77 ?",
+                patchOffset:
+                    7
+            ),
 
             ["Vision_AlwaysEnterApproachBody"] = (
-            signature: "84 C0 75 0D 49 C7 46 08 00 00 00 00 E9",
-            patch: "EB 0D",
-            expectedOriginal: "75 0D",
-            patchOffset: 2    //RVA 0x31931c: jne → jmp
-        ),
+                signature:
+                    "84 C0 75 ? 48 C7 45 08 00 00 00 00 E9 ? ? ? ?",
+                patch:
+                    "EB",
+                expectedOriginal:
+                    "75",
+                patchOffset:
+                    2
+            ),
 
             // IsNoticable（raw 0x2DA930）
             ["IsNoticable_AlwaysTrue"] = (
@@ -235,10 +251,14 @@ internal static class WindowsPatchDefinitions
             //      eax += 1
             //      return eax   
             ["InViewCone_RemoveOuterFOV"] = (
-            signature: "FF 90 C8 00 00 00 0F 2F 05 ? ? ? ? 76 08 33 C0",
-            patch: "90 90",
-            expectedOriginal: "76 08",
-            patchOffset: 13
+                signature:
+                    "FF 90 ? ? 00 00 0F 2F 05 ? ? ? ? 76 ? 33 C0 48 83 C4 20 5B C3 48 8B 03 48 8B CB FF 90 ? ? 00 00",
+                patch:
+                    "EB",
+                expectedOriginal:
+                    "76",
+                patchOffset:
+                    13
         ),
 
             ["InViewCone_RemoveInnerFOV"] = (
