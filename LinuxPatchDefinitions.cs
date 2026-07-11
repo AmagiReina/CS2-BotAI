@@ -31,13 +31,13 @@ internal static class LinuxPatchDefinitions
         ),
 
         // EscapeFromBombState::OnEnter tail-call to EquipKnife() -> ret.
-        // TODO 2026-07-11 UNRESOLVED: "C6 83 84 4F 00 00 00" (mov byte ptr
-        // [rbx+0x4F84], imm) is a very generic struct-field-init idiom used all
-        // over this binary for many unrelated fields - the 3-byte-unique prefix
-        // this reduces to isn't nearly specific enough to relocate the real
-        // function safely. Needs a binary diff or xref from the caller.
+        // FIXED 2026-07-11 via binary diff against pre-update libserver.so:
+        // struct field offset shifted -8 bytes (4F84 -> 4F7C), consistent with the
+        // same recurring shift confirmed in ~10 other patches in this update.
+        // The tail-call target ("E9", offset 12) is unaffected since it was already
+        // wildcarded.
         ["EscapeFromBomb_OnEnter_NoEquipKnife"] = (
-            signature:        "C6 83 84 4F 00 00 00 48 8B 5D F8 C9 E9 ? ? ? ?",
+            signature:        "C6 83 7C 4F 00 00 00 48 8B 5D F8 C9 E9 ? ? ? ?",
             patch:            "C3 90 90 90 90",
             expectedOriginal: "E9 ? ? ? ?",
             patchOffset:      12
@@ -52,12 +52,10 @@ internal static class LinuxPatchDefinitions
         ),
 
         // EscapeFromFlamesState::OnEnter call to EquipKnife() -> NOP.
-        // TODO 2026-07-11 UNRESOLVED: same issue as EscapeFromBomb_OnEnter above -
-        // the leading "mov byte ptr [rbx+...]" bytes are too generic to relocate
-        // safely; no candidate reproduces the full struct-init + call sequence.
-        // Needs a binary diff or xref from the caller.
+        // FIXED 2026-07-11 via binary diff: two struct field offsets both shifted
+        // -8 bytes (4F5C -> 4F54, 4F84 -> 4F7C), same recurring pattern.
         ["EscapeFromFlames_OnEnter_NoEquipKnife"] = (
-            signature:        "C6 83 5C 4F 00 00 00 48 89 DF C6 83 84 4F 00 00 00 E8 ? ? ? ? F3 0F 10 1D",
+            signature:        "C6 83 54 4F 00 00 00 48 89 DF C6 83 7C 4F 00 00 00 E8 ? ? ? ? F3 0F 10 1D",
             patch:            "90 90 90 90 90",
             expectedOriginal: "E8 ? ? ? ?",
             patchOffset:      17
@@ -88,22 +86,15 @@ internal static class LinuxPatchDefinitions
         ),
 
         // Skip fire-rate check in AttackState::Update for low-latency patch.
-        // TODO 2026-07-11 UNRESOLVED: static signature scan found two candidate
-        // addresses (0xC2B9EF and 0x1A897E7) matching the 9-byte prefix "0F 2F 8B
-        // ? ? 00 00 0F 82"; the trailing jump displacement that used to be hardcoded
-        // "42 FF FF FF" no longer matches at either site, and this idiom (float
-        // compare + jb) is common enough in this binary that a short prefix isn't
-        // reliably unique. 0xC2B9EF is far from the other confirmed AttackState
-        // patch addresses (~0xC8Dxxx cluster), so it may be the wrong function.
-        // Needs verification with a binary diff against the pre-update libserver.so
-        // or a live debugger before re-enabling. NOTE: an earlier version of this
-        // fix wildcarded the trailing jump displacement, but that made the
-        // signature match 2 different addresses (0xC2B9EF and 0x1A897E7) -
-        // FindSignature() would silently take whichever one it hits first, which
-        // could patch the wrong function. Deliberately left as a signature that
-        // will not match at all (safe no-op) until it can be disambiguated.
+        // FIXED 2026-07-11 via binary diff against pre-update libserver.so: the
+        // earlier candidates (0xC2B9EF/0x1A897E7) were both wrong - the real
+        // function is at 0xA6283A. Confirmed by matching the surrounding trio of
+        // near-identical comisd+jb checks byte-for-byte except for harmless
+        // register-allocation differences (xmm1->xmm2 etc.); this check's own
+        // register also changed (8B -> 93). Field offset (07A0) is unchanged since
+        // it's a local stack slot, not a struct field.
         ["AttackState_SkipFireRateCheck"] = (
-            signature:        "0F 2F 8B ? ? 00 00 0F 82 42 FF FF FF",
+            signature:        "0F 2F 93 A0 07 00 00 0F 82 ? ? ? ?",
             patch:            "90 90 90 90 90 90",
             expectedOriginal: "0F 82 ? ? ? ?",
             patchOffset:      7
@@ -144,33 +135,28 @@ internal static class LinuxPatchDefinitions
         ),
 
         // AttackState::OnUpdate: skip the CanSeeSniper retreat block.
-        // TODO 2026-07-11 UNRESOLVED: the unique 34-byte prefix still matches at
-        // 0xBF06B7, but the compiler restructured what used to be a single
-        // "test byte; je" gate into two separate "test byte; jne" gates in
-        // sequence (both flags now checked independently). Blindly converting one
-        // "0F 84"->jmp no longer reliably forces the always-skip behavior since
-        // there isn't a single "0F 84 50 03 00 00" left at this site anymore.
-        // Needs manual disassembly to confirm whether both gates must be patched
-        // or whether the logic changed. Left disabled rather than guessing.
+        // FIXED 2026-07-11 via binary diff against pre-update libserver.so: the
+        // near je (0F 84, 6 bytes) the compiler used before was re-encoded as a
+        // short je (74 73, 2 bytes) since the branch target is now closer. The
+        // fix mirrors that: same-size short-jmp (EB) instead of a 6-byte NOP+jmp.
         ["AttackState_RetreatOnSniper_Disable"] = (
-            signature:        "48 8B 07 48 8D 15 ? ? ? ? 48 8B 80 38 05 00 00 48 39 D0 0F 85 ? ? ? ? 80 BF B8 05 00 00 00 0F 84 50 03 00 00 4C 8D 35",
-            patch:            "E9 51 03 00 00 90",
-            expectedOriginal: "0F 84 50 03 00 00",
+            signature:        "48 8B 07 48 8D 15 ? ? ? ? 48 8B 80 38 05 00 00 48 39 D0 0F 85 ? ? ? ? 80 BF B8 05 00 00 00 74 73 4C 8D 35",
+            patch:            "EB 73",
+            expectedOriginal: "74 73",
             patchOffset:      33
         ),
 
         // AttackState::OnUpdate: don't leave the nearby-fire threat path because spread is zero.
-        // TODO 2026-07-11 UNRESOLVED: this "call; load float field; abs-compare; jbe"
-        // idiom recurs at 6+ locations in the binary for different weapon-spread
-        // fields, each with a different struct-field displacement, none matching the
-        // original "E8 52 00 00". Can't disambiguate the correct one from static
-        // bytes alone (needs the real field offset, e.g. from a source/struct diff).
-        // Left disabled rather than guessing.
+        // FIXED 2026-07-11 via binary diff: the leading "48 89 DF; E8 <call>" prefix
+        // this depended on no longer precedes the check (control flow reordered),
+        // so the fix anchors on the stable remainder instead (float field load,
+        // abs-compare, jbe) with its struct field offset shifted -8 bytes (E8 52 ->
+        // E0 52), the same recurring shift seen elsewhere in this update.
         ["AttackState_SkipSniperSpreadCheck"] = (
-            signature:        "48 89 DF E8 ? ? ? ? F3 0F 10 8B E8 52 00 00 66 0F EF C0 0F 2F C8 0F 86 ? ? ? ?",
+            signature:        "F3 0F 10 8B E0 52 00 00 66 0F EF C0 0F 2F C8 0F 86 ? ? ? ?",
             patch:            "90 90 90 90 90 90",
             expectedOriginal: "0F 86 ? ? ? ?",
-            patchOffset:      23
+            patchOffset:      15
         ),
 
         // Keep bot movement behavior when seeing enemies.
@@ -228,13 +214,14 @@ internal static class LinuxPatchDefinitions
         ),
 
         // CCSBot::UpdateLookAround: ignore the movement timer gate.
-        // TODO 2026-07-11 UNRESOLVED: the 8-byte float-load prefix still finds a
-        // unique address (0xC8E5D3), but everything after it changed shape -
-        // the compiler now does an extra pxor/compare and inserts two more
-        // conditional jumps before reaching a "0F 87", and the previously-expected
-        // trailing context ("48 83 BB 58 55 00 00 00") is no longer present there
-        // at all. That's too large a structural change to patch confidently from
-        // static bytes alone. Left disabled rather than guessing.
+        // TODO 2026-07-11 STILL UNRESOLVED after a binary-diff pass: the best
+        // fuzzy-alignment candidate found (~50% byte match, best among several
+        // wide-window searches) shows an inserted integer flag check ("44 8B 83
+        // 3C 53 00 00; 45 85 C0; 0F 84 ...") ahead of where the old float-compare
+        // gate used to be, with what looks like a loop-back jump nearby - possible
+        // signs of a genuinely different/hoisted control-flow shape, or a
+        // coincidental match on an unrelated loop. Not confident enough to patch
+        // safely. Left disabled.
         ["Vision_SkipIsMovingGate"] = (
             signature:        "F3 0F 10 83 00 06 00 00 0F 2F 05 ? ? ? ? 0F 87 ? ? ? ? 48 83 BB 58 55 00 00 00",
             patch:            "90 90 90 90 90 90",
@@ -243,17 +230,15 @@ internal static class LinuxPatchDefinitions
         ),
 
         // Always take approach-body path in Vision logic.
-        // TODO 2026-07-11 UNRESOLVED: two candidate addresses (0xBF7150, 0xC10740)
-        // both match the first 18 bytes (including the "0F 85"/"E9" pair at the
-        // patch site), but diverge immediately after - so I can't confirm which is
-        // correct. Separately, note this patch's design is fragile even once fixed:
-        // it hardcodes a full "E9 <4-byte displacement>" as the replacement, i.e. it
-        // assumes the jne's displacement (the distance to the same target) is always
-        // "A5 FD FF FF". That's specific to one exact binary layout and will need
-        // updating again on this address alone even if the location is confirmed -
-        // the correct fix is to read the real displacement bytes from the match
-        // (which are currently wildcarded) and re-emit them after the E9 opcode,
-        // rather than hardcoding a constant. Left disabled rather than guessing.
+        // TODO 2026-07-11 STILL UNRESOLVED after a binary-diff pass: best
+        // candidates found only reach ~35-53% byte match depending on window size
+        // and disagree with each other, meaning none of them is a confident real
+        // match - the surrounding code appears to have been restructured beyond
+        // what fuzzy byte alignment can reliably relocate. Needs proper
+        // decompiler-assisted (Ghidra/IDA) analysis with real function
+        // boundaries/xrefs. Also note as before: even once located, this patch's
+        // hardcoded "E9 <displacement>" design needs the *real* displacement bytes
+        // captured from the match rather than a hardcoded constant. Left disabled.
         /*["Vision_AlwaysEnterApproachBody"] = (
             signature:        "80 BB 39 04 00 00 00 0F 85 ? ? ? ? E9 ? ? ? ? F3 0F 10 8D 00 FF FF FF",
             patch:            "E9 A5 FD FF FF 90",
@@ -273,23 +258,25 @@ internal static class LinuxPatchDefinitions
         ),*/
 
         // CCSBot::UpdateLookAround: skip the skill threshold before approach-body checks.
-        // TODO 2026-07-11 UNRESOLVED: no reliable match found. The only prefix hits
-        // this produced collide with the neighboring AllSkill_KeepMoving_WhenSeeSniper
-        // function (a coincidental prefix overlap, not the real target), and a second
-        // candidate is in an unrelated, distant region of the binary. Needs manual
-        // disassembly/binary-diff to relocate. Left disabled rather than guessing.
+        // FIXED 2026-07-11 via binary diff: the short jbe (76 6D, 2 bytes) got
+        // re-encoded as a near jbe (0F 86, 6 bytes) since the branch target is now
+        // farther away, and the struct field offset shifted -8 bytes (5978 -> 5970).
         ["Vision_ApproachBody_SkipSkillCheck"] = (
-            signature:        "F3 0F 10 40 0C 0F 2F 05 ? ? ? ? 76 6D F3 0F 10 83 78 59 00 00",
-            patch:            "90 90",
-            expectedOriginal: "76 6D",
+            signature:        "F3 0F 10 40 0C 0F 2F 05 ? ? ? ? 0F 86 ? ? ? ? F3 0F 10 83 70 59 00 00",
+            patch:            "90 90 90 90 90 90",
+            expectedOriginal: "0F 86 ? ? ? ?",
             patchOffset:      12
         ),
 
         // CCSBot::UpdateLookAround: don't leave the approach-body path when the hiding spot cone check fails.
-        // TODO 2026-07-11 UNRESOLVED: the "48 89 DF E8 ? ? ? ? 85 C0 74" prefix is
-        // too generic (call + test + je is an extremely common idiom) - it produced
-        // 8+ candidates, all of which diverge immediately afterward (backward jumps,
-        // unrelated struct writes). None is a plausible match. Left disabled.
+        // TODO 2026-07-11 STILL UNRESOLVED after a binary-diff pass too: the OLD
+        // build's "48 89 DF; E8 <direct call>" was replaced by a vtable dispatch
+        // ("8B 04 24; 4C 89 E7; FF 90 E8 00 00 00") at the corresponding location,
+        // and the "85 C0 74 29" (test+je) that this patch targets doesn't appear
+        // anywhere after it anymore - the branch this comment describes may have
+        // been eliminated or folded into the caller. Needs manual decompilation to
+        // confirm the new gate (if any) actually serves the same purpose before
+        // patching it. Left disabled rather than guessing at a behavior change.
         ["Vision_ApproachBody_SkipHidingSpotCheck"] = (
             signature:        "48 89 DF E8 ? ? ? ? 85 C0 74 29 48 8B 03 48 8D 15 ? ? ? ? 48 8B 80 B0 00 00 00",
             patch:            "90 90",
@@ -353,20 +340,17 @@ internal static class LinuxPatchDefinitions
         ),
 
         // Idle/bomb-search fallback: GetNextBombsiteToSearch() -> GetPlantedBombsite().
-        // TODO 2026-07-11 UNRESOLVED: the game-state member offset moved from
-        // 0x5E10 to what looks like 0x0D10 (seen consistently across many unrelated
-        // call sites in this binary, suggesting CCSBot's layout changed
-        // significantly, not just a small shift). However this specific
-        // "get gameState; call; call; deref" sequence no longer appears at any of
-        // the 8 call sites that reference that offset, so the surrounding function
-        // was restructured, not just relocated. This patch also hardcodes a
-        // replacement call target ("E8 6C BF F6 FF") computed for the old binary's
-        // layout, which would need recalculating even once the call site is found.
-        // Needs a binary diff against the pre-update libserver.so. Left disabled.
+        // FIXED 2026-07-11 via binary diff against pre-update libserver.so: struct
+        // field offset shifted -8 bytes (5E10 -> 5E08). More importantly, the
+        // patch redirects this call to GetPlantedBombsite() via a hardcoded
+        // relative-call displacement, which is inherently build-specific -
+        // recomputed here by locating GetPlantedBombsite's actual body in the new
+        // binary (verified via a 64-byte exact match at 0xBE7A90) and calculating
+        // the new displacement from this call site to it.
         ["TBot_BombsiteSearch_UseKnownPlantedSite"] = (
-            signature:        "48 8B BB 10 5E 00 00 E8 ? ? ? ? 4C 89 F7 E8 ? ? ? ? 49 8B 3C 24 31 F6",
-            patch:            "E8 6C BF F6 FF",
-            expectedOriginal: "E8 5C C2 F6 FF",
+            signature:        "48 8B BB 08 5E 00 00 E8 ? ? ? ? 4C 89 F7 E8 ? ? ? ? 49 8B 3C 24 31 F6",
+            patch:            "E8 6C 1D F6 FF",
+            expectedOriginal: "E8 5C 20 F6 FF",
             patchOffset:      15
         ),
 
@@ -387,17 +371,17 @@ internal static class LinuxPatchDefinitions
         ),
 
         // CSGameState::OnBombPlanted: all bot-owned game states learn the planted site.
-        // TODO 2026-07-11 UNRESOLVED: this is the real Linux copy of this patch (a
-        // separate, previously-unexamined duplicate key later in the same
-        // dictionary - see plugin-author's note below). No candidate reproduces the
-        // full sequence; the closest prefix hits ("48 8B 83 08 5E 00 00...") show
-        // the gameState field offset moved from 0x5108 to 0x5E08, but the code
-        // immediately afterward is structurally different in every candidate found.
-        // Needs a binary diff or symbol-assisted lookup to relocate reliably.
+        // FIXED 2026-07-11 via binary diff against pre-update libserver.so: struct
+        // field offset shifted -8 bytes (5108 -> 5100), the same recurring pattern
+        // confirmed in ~10 other patches in this update. Rest of the sequence,
+        // including the "0F 84" jump target, matches exactly at 0xC0E9C9; only the
+        // jump's own displacement differs as expected (10 01 00 00 -> EF 00 00 00),
+        // and the jmp-conversion patch bytes are recomputed accordingly
+        // (jmp_disp = je_disp + 1, to account for the 1-byte-shorter encoding).
         ["OnBombPlanted_AllBotsLearnSite"] = (
-            signature:        "48 8B 83 08 51 00 00 48 8B 40 18 80 B8 24 06 00 00 02 0F 84 10 01 00 00 48 8B 7B 18",
-            patch:            "E9 11 01 00 00 90",
-            expectedOriginal: "0F 84 10 01 00 00",
+            signature:        "48 8B 83 00 51 00 00 48 8B 40 18 80 B8 24 06 00 00 02 0F 84 EF 00 00 00 48 8B 7B 18",
+            patch:            "E9 F0 00 00 00 90",
+            expectedOriginal: "0F 84 EF 00 00 00",
             patchOffset:      18
         ),
 
