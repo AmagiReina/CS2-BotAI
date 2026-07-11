@@ -114,10 +114,14 @@ internal static class WindowsPatchDefinitions
         ),
 
             ["AttackState_SkipSniperSpreadCheck"] = (
-            signature: "41 0F 28 C8 0F 57 C0 FF 15 ? ? ? ? F3 0F 10 0D ? ? ? ? 0F 2F C8 0F 86",
-            patch: "90 90 90 90 90 90",
-            expectedOriginal: "0F 86 8A 04 00 00",
-            patchOffset: 24  // RVA 0x320153: NOP jbe+47B
+                signature:
+                    "41 0F 28 C8 0F 57 C0 FF 15 ? ? ? ? F3 0F 10 0D ? ? ? ? 0F 2F C8 0F 86 ? ? ? ? 48 8B 9E ? ? 00 00",
+                patch:
+                    "90 90 90 90 90 90",
+                expectedOriginal:
+                    "0F 86 ? ? ? ?",
+                patchOffset:
+                    24  // RVA 0x320153: NOP jbe+47B
         ),
 
 
@@ -145,20 +149,28 @@ internal static class WindowsPatchDefinitions
             // Source: AttackState::OnEnter
             // skill>0.5 && (Outnumbered || CanSeeSniper) → dodgeChance=100
             ["AttackState_DodgeChance100_Always"] = (
-            signature: "0F 28 F0 F3 0F 59 35 ? ? ? ? 76 15",
-            patch: "EB 11",
-            expectedOriginal: "76 15",
-            patchOffset: 11
-        ),
+                signature:
+                    "0F 28 F0 F3 0F 59 35 ? ? ? ? 76 14",
+                patch:
+                    "EB 11",
+                expectedOriginal:
+                    "76 14",
+                patchOffset:
+                    11
+            ),
 
             // Source: AttackState::OnUpdate
             // (CanSeeSniper && !IsSniper) → retreat
             ["AttackState_RetreatOnSniper_Disable"] = (
-            signature: "44 38 B6 ? 5C 00 00 74 0C 48 8B CE E8 ? ? ? ? 84 C0",
-            patch: "EB 0C",
-            expectedOriginal: "74 0C",
-            patchOffset: 7
-        ),
+                signature:
+                    "38 9E ? ? 00 00 74 ? 48 8B CE E8 ? ? ? ? 84 C0 74 ?",
+                patch:
+                    "EB",
+                expectedOriginal:
+                    "74",
+                patchOffset:
+                    6
+            ),
 
             ["AllSkill_KeepMoving_WhenSeeSniper"] = (
             signature: "0F 2F 05 ? ? ? ? 76 0D 80 BF ? ? 00 00 00 0F 85",
@@ -320,11 +332,15 @@ internal static class WindowsPatchDefinitions
             // hears every sound event regardless of distance. This replaces the
             // need for individual per-event patches
             ["OnAudibleEvent_GlobalHearRange"] = (
-            signature: "F3 44 0F 51 CA EB 0C 0F 28 C2 E8 ? ? ? ? 44 0F 28 C8 45 0F 2F D1 0F 86 ? ? ? ?",
-            patch: "90 90 90 90 90 90",
-            expectedOriginal: "0F 86 F4 03 00 00",
-            patchOffset: 23
-        ),
+                signature:
+                    "F3 44 0F 51 CA EB 0C 0F 28 C2 E8 ? ? ? ? 44 0F 28 C8 45 0F 2F D1 0F 86 ? ? ? ?",
+                patch:
+                    "90 90 90 90 90 90",
+                expectedOriginal:
+                    "0F 86 ? ? ? ?",
+                patchOffset:
+                    23
+            ),
 
             // Source: CSGameState::OnBombPlanted (cs_gamestate)
             //   // Terrorists always know where the bomb is
