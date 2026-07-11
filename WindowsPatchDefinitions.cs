@@ -295,10 +295,14 @@ internal static class WindowsPatchDefinitions
             // With the patch active: [gameState+0x68] is set at plant time for all bots.
             //  directly to the planted site instead of random searching.
             ["TBot_BombsiteSearch_UseKnownPlantedSite"] = (
-            signature: "48 8B 8E ? ? 00 00 E8 ? ? ? ? 49 8B CC E8 ? ? ? ? 4C 8B 05 ? ? ? ? 85 C0",
-            patch: "E8 55 46 F9 FF",
-            expectedOriginal: "E8 D5 3F F9 FF",
-            patchOffset: 15
+                signature:
+                    "48 8B 8E ? ? 00 00 E8 ? ? ? ? 48 8B CB E8 ? ? ? ? 4C 8B 05 ? ? ? ? 85 C0",
+                patch:
+                    "E8 28 41 F9 FF",
+                expectedOriginal:
+                    "E8 38 3B F9 FF",
+                patchOffset:
+                    15
         ),
 
             // Source: cs_bot_event_bomb / OnBombBeep handler
@@ -307,10 +311,14 @@ internal static class WindowsPatchDefinitions
             // NOP the jbe → CT bots always enter the bombsite-update path,
             // regardless of distance to the bomb.
             ["BombBeep_CT_GlobalHearRange"] = (
-            signature: "F3 0F 59 F6 F3 0F 59 DB F3 0F 59 D2 F3 0F 58 DA F3 0F 58 DE 0F 2F C3 76 67",
-            patch: "90 90",
-            expectedOriginal: "76 67",
-            patchOffset: 23
+                signature:
+                    "F3 0F 59 C9 F3 0F 59 C0 F3 0F 59 F6 F3 0F 58 C8 F3 0F 10 05 ? ? ? ? F3 0F 58 CE 0F 2F C1 76 67",
+                patch:
+                    "90 90",
+                expectedOriginal:
+                    "76 67",
+                patchOffset:
+                    31
         ),
 
             // Source: cs_bot_event_bomb.cpp — OnBombPickedUp
@@ -318,10 +326,14 @@ internal static class WindowsPatchDefinitions
             //   if (LengthSqr() < bombPickupHearRangeSq) → CT tracks bomber
             // NOP jbe → all CT bots always track who picks up the bomb.
             ["BombPickup_CT_GlobalHearRange"] = (
-            signature: "F3 0F 5C 78 08 F3 0F 59 D2 F3 0F 59 FF F3 0F 58 CA F3 0F 58 CF 0F 28 BC 24 E0 00 00 00 0F 2F C1 76 23",
-            patch: "90 90",
-            expectedOriginal: "76 23",
-            patchOffset: 32
+                signature:
+                    "F3 0F 59 D2 F3 0F 59 C0 F3 0F 59 C9 F3 0F 58 D1 F3 0F 58 D0 F3 0F 10 05 ? ? ? ? 0F 2F C2 76 23",
+                patch:
+                    "90 90",
+                expectedOriginal:
+                    "76 23",
+                patchOffset:
+                    31
         ),
 
             // Source: CCSBot::OnAudibleEvent — universal sound event gate
