@@ -5,7 +5,7 @@ internal static class LinuxPatchDefinitions
     internal static IReadOnlyDictionary<string, (string signature, string patch, string expectedOriginal, int patchOffset)> All { get; } =
         new Dictionary<string, (string signature, string patch, string expectedOriginal, int patchOffset)>()
         {
-        // Confirmed against /home/misaka/cs2/game/csgo/bin/linuxsteamrt64/libserver.so (2026-06-09).
+ // Confirmed against /home/misaka/cs2/game/csgo/bin/linuxsteamrt64/libserver.so (2026-06-09).
         // Force HasVisitedEnemySpawn = 1 so bots don't revisit enemy spawn.
         ["HasVisitedEnemySpawn"] = (
             signature:        "40 88 B7 6C 07 00 00 C3",
@@ -214,34 +214,39 @@ internal static class LinuxPatchDefinitions
         ),
 
         // CCSBot::UpdateLookAround: ignore the movement timer gate.
-        // TODO 2026-07-11 STILL UNRESOLVED after a binary-diff pass: the best
-        // fuzzy-alignment candidate found (~50% byte match, best among several
-        // wide-window searches) shows an inserted integer flag check ("44 8B 83
-        // 3C 53 00 00; 45 85 C0; 0F 84 ...") ahead of where the old float-compare
-        // gate used to be, with what looks like a loop-back jump nearby - possible
-        // signs of a genuinely different/hoisted control-flow shape, or a
-        // coincidental match on an unrelated loop. Not confident enough to patch
-        // safely. Left disabled.
+        // FIXED 2026-07-11: cross-checking against the Windows dictionary entry
+        // for this same patch (comiss; ja <patch target>; mov;mov;call - all
+        // adjacent, no split) revealed I had the wrong location. 0xBF6C80 (the
+        // "cmp qword[rbx+0x5550]" chain) was a red herring - a near-exact match,
+        // but for unrelated, compiler-folded bail-out code. The real gate is at
+        // 0xC8E5D3, which I'd actually found early in this session and wrongly
+        // discarded: movss[rbx+0x600] (unique in the whole binary) -> pxor xmm1,xmm1
+        // -> comiss xmm0,xmm1 -> jp/je (both already skip forward to the
+        // continuation, i.e. NaN and ==0 already fall through as intended) -> ja
+        // (the actual gate; NEW build re-encoded it from a short "77" to a near
+        // "0F 87" and added the NaN-safety jp/je pair, but the semantics are
+        // unchanged from the original OLD-build comiss+ja shape). NOPing the ja
+        // makes every case fall through to the continuation, matching what the
+        // patch always intended.
         ["Vision_SkipIsMovingGate"] = (
-            signature:        "F3 0F 10 83 00 06 00 00 0F 2F 05 ? ? ? ? 0F 87 ? ? ? ? 48 83 BB 58 55 00 00 00",
+            signature:        "F3 0F 10 83 00 06 00 00 66 0F EF C9 0F 2F C1 7A 08 74 06 0F 87 ? ? ? ?",
             patch:            "90 90 90 90 90 90",
             expectedOriginal: "0F 87 ? ? ? ?",
-            patchOffset:      15
+            patchOffset:      19
         ),
 
         // Always take approach-body path in Vision logic.
-        // TODO 2026-07-11 STILL UNRESOLVED after a binary-diff pass: best
-        // candidates found only reach ~35-53% byte match depending on window size
-        // and disagree with each other, meaning none of them is a confident real
-        // match - the surrounding code appears to have been restructured beyond
-        // what fuzzy byte alignment can reliably relocate. Needs proper
-        // decompiler-assisted (Ghidra/IDA) analysis with real function
-        // boundaries/xrefs. Also note as before: even once located, this patch's
-        // hardcoded "E9 <displacement>" design needs the *real* displacement bytes
-        // captured from the match rather than a hardcoded constant. Left disabled.
+        // FIXED 2026-07-11 via binary diff + capstone disassembly comparison
+        // (raw byte fuzzy matching kept missing this because a few bytes drift
+        // early on threw off alignment for everything after; comparing instruction
+        // mnemonics instead survives that). Structurally identical to the OLD
+        // build at 0xBF7150: "cmp byte[rbx+0x439],0; jne; jmp". Per the note above,
+        // the displacement was NOT hardcoded from the old binary - it was read
+        // directly from this jne (6D F8 FF FF) and the jmp displacement computed
+        // as jne_disp+1 (jmp is 1 byte shorter, same target).
         /*["Vision_AlwaysEnterApproachBody"] = (
-            signature:        "80 BB 39 04 00 00 00 0F 85 ? ? ? ? E9 ? ? ? ? F3 0F 10 8D 00 FF FF FF",
-            patch:            "E9 A5 FD FF FF 90",
+            signature:        "80 BB 39 04 00 00 00 0F 85 ? ? ? ? E9 ? ? ? ? 66 0F 1F 44 00 00 48 89 DF",
+            patch:            "E9 6E F8 FF FF 90",
             expectedOriginal: "0F 85 ? ? ? ?",
             patchOffset:      7
         ),*/
@@ -269,18 +274,17 @@ internal static class LinuxPatchDefinitions
         ),
 
         // CCSBot::UpdateLookAround: don't leave the approach-body path when the hiding spot cone check fails.
-        // TODO 2026-07-11 STILL UNRESOLVED after a binary-diff pass too: the OLD
-        // build's "48 89 DF; E8 <direct call>" was replaced by a vtable dispatch
-        // ("8B 04 24; 4C 89 E7; FF 90 E8 00 00 00") at the corresponding location,
-        // and the "85 C0 74 29" (test+je) that this patch targets doesn't appear
-        // anywhere after it anymore - the branch this comment describes may have
-        // been eliminated or folded into the caller. Needs manual decompilation to
-        // confirm the new gate (if any) actually serves the same purpose before
-        // patching it. Left disabled rather than guessing at a behavior change.
+        // FIXED 2026-07-11 via binary diff: found the real call site (0xBF7110) by
+        // tracing the call target instead of matching bytes directly - it calls
+        // straight into the InViewCone function confirmed earlier in this session
+        // (0xBD6E60, the true entry point 9 bytes before where the InViewCone AOB
+        // signature matches inside its body). Struct field offset (0xB0) is
+        // unchanged here. The 2-byte short je got re-encoded as a 6-byte near je
+        // (0F 84), same pattern seen in several other patches this session.
         ["Vision_ApproachBody_SkipHidingSpotCheck"] = (
-            signature:        "48 89 DF E8 ? ? ? ? 85 C0 74 29 48 8B 03 48 8D 15 ? ? ? ? 48 8B 80 B0 00 00 00",
-            patch:            "90 90",
-            expectedOriginal: "74 29",
+            signature:        "48 89 DF E8 ? ? ? ? 85 C0 0F 84 ? ? ? ? 48 8B 03 48 8D 15 ? ? ? ? 48 8B 80 B0 00 00 00",
+            patch:            "90 90 90 90 90 90",
+            expectedOriginal: "0F 84 ? ? ? ?",
             patchOffset:      10
         ),
 
