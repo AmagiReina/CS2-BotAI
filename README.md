@@ -11,9 +11,9 @@ Improves their movement comprehensively, especially in dodging and peeking.<br>
 Enhances bots' awareness of their surroundings.<br>
 Improved bomb-related logic.<br>
 <br>
-V 1.8.4<br>
+V 1.8.6<br>
 Built and testing with<br>
-cs# 1.0.367<br>
+cs# 1.0.371<br>
 # Installation
 1. Download the latest BotAI.zip from [Releases](https://github.com/ed0ard/CS2-BotAI/releases)
 
