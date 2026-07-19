@@ -187,28 +187,48 @@ internal static class LinuxPatchDefinitions
             patchOffset:      19
         ),
 
+        ["Vision_AlwaysEnterApproachBody_Cave"] = (
+            signature:        "48 89 DF FF D0 E9 48 FF FF FF CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patch:            "48 83 7B 18 00 0F 84 13 01 00 00 E9 50 01 00 00",
+            expectedOriginal: "CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patchOffset:      10
+        ),
+
         // Always take approach-body path in Vision logic.
         ["Vision_AlwaysEnterApproachBody"] = (
             signature:        "80 BB 39 04 00 00 00 0F 85 ? ? ? ? E9 ? ? ? ? 66 0F 1F 44 00 00 48 89 DF",
-            patch:            "E9 6E F8 FF FF 90",
+            patch:            "E9 0E F7 FF FF 90",
             expectedOriginal: "0F 85 ? ? ? ?",
             patchOffset:      7
         ),
 
-        // CCSBot::UpdateLookAround: run the approach-point watch loop whenever present.
+        ["Vision_AlwaysWatchApproachPoints_Cave"] = (
+            signature:        "F3 0F 11 4D A8 E9 CD FE FF FF CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patch:            "48 83 7B 18 00 0F 84 71 A1 FE FF E9 11 A0 FE FF",
+            expectedOriginal: "CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patchOffset:      10
+        ),
+
+        // CCSBot::UpdateLookAround: skip the skill threshold before approach-body checks.
         ["Vision_AlwaysWatchApproachPoints"] = (
             signature:        "F3 0F 58 85 EC FE FF FF 80 BB F0 54 00 00 00 F3 0F 11 83 28 53 00 00 0F 84 ? ? ? ? F3 0F 10 1D",
-            patch:            "90 90 90 90 90 90",
+            patch:            "E9 E0 5F 01 00 90",
             expectedOriginal: "0F 84 ? ? ? ?",
             patchOffset:      23
         ),
 
-        // CCSBot::UpdateLookAround: skip the skill threshold before approach-body checks.
-        ["Vision_ApproachBody_SkipSkillCheck"] = (
-            signature:        "F3 0F 10 40 0C 0F 2F 05 ? ? ? ? 0F 86 ? ? ? ? F3 0F 10 83 70 59 00 00",
-            patch:            "90 90 90 90 90 90",
-            expectedOriginal: "0F 86 ? ? ? ?",
-            patchOffset:      12
+        ["Vision_AlwaysWatchApproachPoints_LoopEntry_Cave"] = (
+            signature:        "48 8B 07 FF 50 20 E9 26 FF FF FF CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patch:            "49 8B 7F 10 48 85 FF 0F 84 7A 2C FE FF 80 BA 24 06 00 00 02 75 05 BE 03 00 00 00 E9 C8 2C FE FF",
+            expectedOriginal: "CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patchOffset:      11
+        ),
+
+        ["Vision_AlwaysWatchApproachPoints_LoopEntry"] = (
+            signature:        "49 8B 56 18 BE 02 00 00 00 49 8B 7F 10 80 BA 24 06 00 00 02",
+            patch:            "E9 25 D3 01 00 90 90 90 90 90 90",
+            expectedOriginal: "49 8B 7F 10 80 BA 24 06 00 00 02",
+            patchOffset:      9
         ),
 
         // CCSBot::UpdateLookAround: don't leave the approach-body path when the hiding spot cone check fails.
