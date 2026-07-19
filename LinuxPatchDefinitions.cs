@@ -5,7 +5,7 @@ internal static class LinuxPatchDefinitions
     internal static IReadOnlyDictionary<string, (string signature, string patch, string expectedOriginal, int patchOffset)> All { get; } =
         new Dictionary<string, (string signature, string patch, string expectedOriginal, int patchOffset)>()
         {
- // Confirmed against /home/misaka/cs2/game/csgo/bin/linuxsteamrt64/libserver.so (2026-06-09).
+        // Confirmed against /home/misaka/cs2/game/csgo/bin/linuxsteamrt64/libserver.so (2026-06-09).
         // Force HasVisitedEnemySpawn = 1 so bots don't revisit enemy spawn.
         ["HasVisitedEnemySpawn"] = (
             signature:        "40 88 B7 6C 07 00 00 C3",
@@ -235,33 +235,114 @@ internal static class LinuxPatchDefinitions
             patchOffset:      19
         ),
 
-        // Always take approach-body path in Vision logic.
-        // FIXED 2026-07-11 via binary diff + capstone disassembly comparison
-        // (raw byte fuzzy matching kept missing this because a few bytes drift
-        // early on threw off alignment for everything after; comparing instruction
-        // mnemonics instead survives that). Structurally identical to the OLD
-        // build at 0xBF7150: "cmp byte[rbx+0x439],0; jne; jmp". Per the note above,
-        // the displacement was NOT hardcoded from the old binary - it was read
-        // directly from this jne (6D F8 FF FF) and the jmp displacement computed
-        // as jne_disp+1 (jmp is 1 byte shorter, same target).
-        /*["Vision_AlwaysEnterApproachBody"] = (
+        // --- Vision_AlwaysEnterApproachBody: REAL FIX 2026-07-13 ---
+        // Root cause (confirmed via disassembly): forcing entry unconditionally
+        // lands on "mov rdi,[rbx+0x18]; call 0xD2EA10" where the callee immediately
+        // does "mov rbx,[rdi+0x528]" with no null check. [rbx+0x18] is only valid
+        // when the byte flag this patch bypasses is set - when it's null (no
+        // current approach point, e.g. right after spawn/death), that's a null
+        // pointer dereference -> SIGSEGV. Matches the report exactly (worse with
+        // more bots, worst right after kills).
+        // A same-size opcode flip can't add a real check, so this uses a genuine
+        // code-cave: a 22-byte block of unused int3 padding at 0xBF686A (right
+        // after an unrelated function's "jmp 0xbf67b2" epilogue, verified unique).
+        // The cave does the null-check itself:
+        //   cmp qword ptr [rbx+0x18], 0
+        //   je  <Y>   ; original "no approach point" path - same target the
+        //               unpatched jne would have gone to when the flag was clear
+        //   jmp <X>   ; original "has approach point" path - same target this
+        //               patch always intended to force
+        // i.e. this restores an equivalent safety gate (on pointer validity
+        // instead of the byte flag - they should track each other), while still
+        // always taking the "has approach point" branch whenever it's genuinely
+        // safe to. This entry MUST be applied before the redirect entry below
+        // (dictionary insertion order - .NET Dictionary preserves it here since
+        // nothing is ever removed).
+        ["Vision_AlwaysEnterApproachBody_Cave"] = (
+            signature:        "48 89 DF FF D0 E9 48 FF FF FF CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patch:            "48 83 7B 18 00 0F 84 13 01 00 00 E9 50 01 00 00",
+            expectedOriginal: "CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patchOffset:      10
+        ),
+
+        // Always take approach-body path in Vision logic, but only when it's
+        // actually safe to (see cave entry above). Redirects the original jne
+        // site into the cave instead of converting it to an unconditional jmp.
+        ["Vision_AlwaysEnterApproachBody"] = (
             signature:        "80 BB 39 04 00 00 00 0F 85 ? ? ? ? E9 ? ? ? ? 66 0F 1F 44 00 00 48 89 DF",
-            patch:            "E9 6E F8 FF FF 90",
+            patch:            "E9 0E F7 FF FF 90",
             expectedOriginal: "0F 85 ? ? ? ?",
             patchOffset:      7
-        ),*/
+        ),
 
-        // CCSBot::UpdateLookAround: run the approach-point watch loop whenever present.
-        // FIXED 2026-07-11: struct field offsets shifted -8 bytes each (54F8 -> 54F0,
-        // 5330 -> 5328), consistent with a field removed earlier in CCSBot's layout.
-        // The "0F 84" target sequence itself is unaffected (still wildcarded).
-        /*["Vision_AlwaysWatchApproachPoints"] = (
+        // --- Vision_AlwaysWatchApproachPoints: REAL FIX 2026-07-13 ---
+        // My "RE-ENABLED" note above was wrong - re-traced this properly after
+        // it was reported crashing (thank you for catching that; the count-gate
+        // I pointed to doesn't actually protect the path I assumed).
+        // The loop this forces entry into is do-while shaped: "jmp 0xbf6b4e"
+        // unconditionally runs the body ONCE before the count check
+        // (edx=[rbx+0x54f0] vs loop index) is ever reached. That first pass does
+        // "mov rdx,[rbx+0x18]; ...; cmp byte[rdx+0x624],2" with no null check -
+        // same risky field as Vision_AlwaysEnterApproachBody, same root cause
+        // class. In STOCK code the outer je (which I'd NOP'd) is the ONLY thing
+        // that ever prevented this when the approach-point count is 0 - so this
+        // crashes whenever a bot has no current enemy target, independent of how
+        // many approach points it knows about. Matches the report: worse with
+        // more bots, worse right after kills (a bot's "current enemy" pointer
+        // clears when its target dies).
+        // Same fix pattern as before - a genuine code cave with a null check,
+        // this time using 22 bytes of unused int3 padding at 0xC0CAAA (a
+        // different, verified-unique location from the other patch's cave, since
+        // that one's already fully used).
+        ["Vision_AlwaysWatchApproachPoints_Cave"] = (
+            signature:        "F3 0F 11 4D A8 E9 CD FE FF FF CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patch:            "48 83 7B 18 00 0F 84 71 A1 FE FF E9 11 A0 FE FF",
+            expectedOriginal: "CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patchOffset:      10
+        ),
+
+        // CCSBot::UpdateLookAround: run the approach-point watch loop whenever present,
+        // but only when [rbx+0x18] is actually valid (see cave entry above).
+        // Redirects the original je site into the cave instead of NOPing it.
+        ["Vision_AlwaysWatchApproachPoints"] = (
             signature:        "F3 0F 58 85 EC FE FF FF 80 BB F0 54 00 00 00 F3 0F 11 83 28 53 00 00 0F 84 ? ? ? ? F3 0F 10 1D",
-            patch:            "90 90 90 90 90 90",
+            patch:            "E9 E0 5F 01 00 90",
             expectedOriginal: "0F 84 ? ? ? ?",
             patchOffset:      23
-        ),*/
+        ),
 
+        // --- Vision_AlwaysWatchApproachPoints: SECOND FIX 2026-07-14 ---
+        // Still crashed with the cave above in place. Traced further: even with
+        // [rbx+0x18] guaranteed valid, the loop body itself has an UNRELATED
+        // unguarded pointer - "mov rdi,[r15+0x10]" (a per-entry field in the
+        // approach-points array, r15 walking the array) is passed straight into
+        // "call 0xd05ce0" with zero null check, either at the call site or inside
+        // the callee itself (which does "movss xmm0,[rdi+rsi*4+0xc0]" immediately,
+        // no test at all). Any approach-point slot with an unset/invalid entry
+        // pointer crashes here - a completely separate risk from the entry gate,
+        // and one that exists on EVERY loop iteration, not just entry into the
+        // function. This is likely the actual differential cause between "only
+        // Vision_AlwaysEnterApproachBody" (fine) and "both enabled" (crashes),
+        // since this loop only runs at all because of this patch.
+        // Fix: redirect the load+compare (11 bytes: "mov rdi,[r15+0x10]" +
+        // "cmp byte[rdx+0x624],2") into a 32-byte cave at 0xC13E81 that re-does
+        // the load, null-checks rdi, skips this entry entirely (jumps to the next
+        // iteration, 0xbf6b08) if invalid, and otherwise replicates the original
+        // compare/branch/call-setup exactly before resuming normal flow at the
+        // original call instruction.
+        ["Vision_AlwaysWatchApproachPoints_LoopEntry_Cave"] = (
+            signature:        "48 8B 07 FF 50 20 E9 26 FF FF FF CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patch:            "49 8B 7F 10 48 85 FF 0F 84 7A 2C FE FF 80 BA 24 06 00 00 02 75 05 BE 03 00 00 00 E9 C8 2C FE FF",
+            expectedOriginal: "CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC",
+            patchOffset:      11
+        ),
+
+        ["Vision_AlwaysWatchApproachPoints_LoopEntry"] = (
+            signature:        "49 8B 56 18 BE 02 00 00 00 49 8B 7F 10 80 BA 24 06 00 00 02",
+            patch:            "E9 25 D3 01 00 90 90 90 90 90 90",
+            expectedOriginal: "49 8B 7F 10 80 BA 24 06 00 00 02",
+            patchOffset:      9
+        ),
         // CCSBot::UpdateLookAround: skip the skill threshold before approach-body checks.
         // FIXED 2026-07-11 via binary diff: the short jbe (76 6D, 2 bytes) got
         // re-encoded as a near jbe (0F 86, 6 bytes) since the branch target is now
